@@ -1,40 +1,36 @@
-#include <QCoreApplication>
+#include <QApplication> // Changed from QCoreApplication to QApplication for UI
 #include <QDebug>
+#include "ui/MainWindow.h"
 #include "core/CaptureDetectionEngine.h"
-#include "platform/CaptureMonitor.h" // Added to access the ETW lifecycle functions
+#include "platform/CaptureMonitor.h"
 
-int main(int argc, char *argv[]) {
-    QCoreApplication app(argc, argv);
+int main(int argc, char* argv[]) {
+    // QApplication is required for Qt Widgets
+    QApplication app(argc, argv);
 
-    qDebug() << "Starting Privacy Shield Test...";
+    qDebug() << "Starting Privacy Shield UI...";
 
-    // START THE KERNEL LISTENER
-    // Note: This will print an error and fail safely if not run as Administrator
+    // 1. Start your background Kernel listener
     CaptureMonitor::StartETWListener();
 
-    CaptureDetectionEngine engine;
+    // 2. Initialize and show the Main UI Window
+    MainWindow window;
+    window.show();
 
-    // Connect the signals to simple lambda functions for testing
+    // 3. Keep your engine running in the background
+    CaptureDetectionEngine engine;
     QObject::connect(&engine, &CaptureDetectionEngine::captureStarted, []() {
         qDebug() << "🔴 [ALERT] Capture STARTED! Masking should engage now.";
-    });
-
+        });
     QObject::connect(&engine, &CaptureDetectionEngine::captureStopped, []() {
         qDebug() << "🟢 [ALERT] Capture STOPPED! Masking can be removed.";
-    });
-
-    QObject::connect(&engine, &CaptureDetectionEngine::monitoringError, [](const QString &msg) {
-        qDebug() << "🟡 [ERROR]" << msg;
-    });
-
-    // Start polling every 1 second (1000 ms)
+        });
     engine.startMonitoring(1000);
 
-    // Capture the event loop execution result
+    // 4. Start the application event loop
     int result = app.exec();
 
-    // STOP THE KERNEL LISTENER ON EXIT
-    // This is crucial to prevent orphaned ETW trace sessions in Windows
+    // Clean up on exit
     CaptureMonitor::StopETWListener();
 
     return result;

@@ -8,8 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Tell CMake to automatically handle Qt's special macros (MOC)
 set(CMAKE_AUTOMOC ON)
 
-# Find the Qt6 Core module
-find_package(Qt6 REQUIRED COMPONENTS Core)
+# 1. Add Widgets and Gui components
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 
 # Group our source files
 set(SOURCES
@@ -21,6 +21,12 @@ set(SOURCES
     models/Profile.cpp
     persistence/SettingsManager.cpp
     core/CaptureDetectionEngine.cpp
+    
+    # UI Files
+    ui/MainWindow.h
+    ui/MainWindow.cpp
+    ui/AppListItem.h
+    ui/AppListItem.cpp 
 )
 
 # Create the executable
@@ -32,6 +38,8 @@ target_include_directories(PrivacyOverlay PRIVATE
 # Link the Windows APIs and Qt6 Core to our executable
 target_link_libraries(PrivacyOverlay PRIVATE 
     Qt6::Core 
+    Qt6::Widgets 
+    Qt6::Gui
     user32 
     kernel32
     dwmapi
