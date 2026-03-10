@@ -1,71 +1,74 @@
 #include "AppListItem.h"
 #include <QVBoxLayout>
+#include <QFileIconProvider>
+#include <QFileInfo>
+#include <QIcon>
 
-AppListItem::AppListItem(const QString& windowTitle, const QString& exeName, bool initialState, QWidget* parent)
+AppListItem::AppListItem(const QString& windowTitle, const QString& fullExePath, const QString& exeName, bool initialState, QWidget* parent)
     : QWidget(parent) {
 
     QHBoxLayout* mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(15, 15, 15, 15);
 
-    // 1. Icon Placeholder
+    // 1. Extract Real App Icon
     m_iconLabel = new QLabel(this);
     m_iconLabel->setFixedSize(40, 40);
-    m_iconLabel->setStyleSheet("background-color: #e8f5e9; border-radius: 8px; border: 1px solid #c8e6c9;");
+    m_iconLabel->setAlignment(Qt::AlignCenter);
 
-    // 2. Text Container (Vertical layout for Title and Subtitle)
+    QFileInfo fileInfo(fullExePath);
+    QFileIconProvider iconProvider;
+    QIcon icon = iconProvider.icon(fileInfo);
+
+    // Fallback to a default style if the icon can't be found (e.g., UWP apps)
+    if (icon.isNull()) {
+        m_iconLabel->setStyleSheet("background-color: rgba(255, 255, 255, 0.1); border-radius: 8px;");
+    }
+    else {
+        m_iconLabel->setPixmap(icon.pixmap(32, 32)); // Scale to 32x32
+    }
+
+    // 2. Text Container
     QVBoxLayout* textLayout = new QVBoxLayout();
     textLayout->setSpacing(2);
 
-    // Window Title
     m_nameLabel = new QLabel(windowTitle, this);
     QFont font = m_nameLabel->font();
     font.setBold(true);
     font.setPointSize(11);
     m_nameLabel->setFont(font);
-    m_nameLabel->setStyleSheet("color: #1b5e20;");
-
-    // **Responsive Design Fix:** If the title is too long, truncate it with "..."
-    // Note: To make this work perfectly, we set a size policy
+    m_nameLabel->setStyleSheet("color: #f1f5f9;");
     m_nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_nameLabel->setMinimumWidth(100);
 
-    // Executable Name (Subtitle)
     m_exeLabel = new QLabel(exeName, this);
-    m_exeLabel->setStyleSheet("color: #666666; font-size: 11px;");
+    m_exeLabel->setStyleSheet("color: #64748b; font-size: 11px;");
 
     textLayout->addWidget(m_nameLabel);
     textLayout->addWidget(m_exeLabel);
 
-    // 3. Toggle Switch
+    // 3. Toggle Switch (Bluish Dark Theme)
     m_toggleSwitch = new QCheckBox(this);
     m_toggleSwitch->setCursor(Qt::PointingHandCursor);
-    m_toggleSwitch->setChecked(initialState); // Set from backend data!
+    m_toggleSwitch->setChecked(initialState);
 
     m_toggleSwitch->setStyleSheet(R"(
         QCheckBox::indicator {
             width: 44px;
             height: 24px;
             border-radius: 12px;
-            border: 2px solid #4CAF50;
-            background-color: #fafafa;
+            border: 2px solid #334155;
+            background-color: rgba(15, 23, 42, 0.8);
         }
-        QCheckBox::indicator:unchecked {
-            background-color: #fafafa;
-        }
-        QCheckBox::indicator:checked {
-            background-color: #81c784;
-            border: 2px solid #388E3C;
-        }
+        QCheckBox::indicator:unchecked { background-color: rgba(15, 23, 42, 0.8); }
+        QCheckBox::indicator:checked { background-color: #0284c7; border: 2px solid #38bdf8; }
     )");
 
-    // Assemble layout
     mainLayout->addWidget(m_iconLabel);
     mainLayout->addSpacing(15);
     mainLayout->addLayout(textLayout);
-    mainLayout->addStretch(); // Pushes the toggle to the far right
+    mainLayout->addStretch();
     mainLayout->addWidget(m_toggleSwitch);
 
-    // Wire up the signal
     connect(m_toggleSwitch, &QCheckBox::toggled, this, [this, exeName](bool checked) {
         emit privacyToggled(exeName, checked);
         });

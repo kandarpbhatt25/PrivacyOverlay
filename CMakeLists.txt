@@ -30,7 +30,7 @@ set(SOURCES
 )
 
 # Create the executable
-add_executable(PrivacyOverlay ${SOURCES})
+add_executable(PrivacyOverlay ${SOURCES} "ui/DashboardWidget.h" "ui/DashboardWidget.cpp" "ui/PresetsWidget.h" "ui/PresetsWidget.cpp" "ui/SettingsWidget.h" "ui/SettingsWidget.cpp")
 
 target_include_directories(PrivacyOverlay PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

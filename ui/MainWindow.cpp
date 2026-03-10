@@ -1,5 +1,8 @@
 #include "MainWindow.h"
 #include "AppListItem.h"
+#include "DashboardWidget.h"
+#include "PresetsWidget.h"
+#include "SettingsWidget.h"
 #include "../platform/WindowEnumerator.h"
 #include "../persistence/SettingsManager.h"
 #include "../models/Profile.h"
@@ -12,9 +15,10 @@
 #include <algorithm>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
-    setWindowTitle("PrivacyOverlay Dashboard");
-    resize(900, 600); // Slightly larger default window
-    setStyleSheet("background-color: #f5f5f5;"); // Soft background
+    setWindowTitle("PrivacyOverlay");
+    resize(950, 650);
+    // Deep bluish-dark background for the whole app
+    setStyleSheet("QMainWindow { background-color: #0b101e; }");
 
     QWidget* centralWidget = new QWidget(this);
     QHBoxLayout* mainLayout = new QHBoxLayout(centralWidget);
@@ -41,6 +45,7 @@ void MainWindow::setupSidebar() {
     m_sidebar->addItem("Dashboard");
     m_sidebar->addItem("APP List");
     m_sidebar->addItem("Presets");
+    m_sidebar->addItem("Settings");
     m_sidebar->setCurrentRow(1);
 
     // Responsive UI fix: Prevent sidebar from getting too wide
@@ -48,22 +53,25 @@ void MainWindow::setupSidebar() {
 
     m_sidebar->setStyleSheet(R"(
         QListWidget {
-            background-color: white;
-            border-right: 1px solid #e0e0e0;
+            background-color: rgba(16, 24, 43, 0.85); /* Slightly translucent dark blue */
+            border-right: 1px solid #1e293b;
             outline: none;
             padding-top: 20px;
         }
         QListWidget::item {
-            color: #555555;
+            color: #94a3b8; /* Slate gray text */
             font-weight: bold;
             font-size: 14px;
             padding: 15px 20px;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid transparent;
+        }
+        QListWidget::item:hover {
+            background-color: rgba(30, 41, 59, 0.5);
         }
         QListWidget::item:selected {
-            color: #2E7D32;
-            background-color: #e8f5e9;
-            border-left: 4px solid #4CAF50;
+            color: #38bdf8; /* Neon Sky Blue */
+            background-color: rgba(56, 189, 248, 0.1); /* Glowing glass effect */
+            border-left: 4px solid #38bdf8;
         }
     )");
 }
@@ -82,41 +90,34 @@ void MainWindow::setupAppListScreen() {
     m_appListLayout->setSpacing(10); // Space between items
 
     QLabel* titleLabel = new QLabel("Active Applications", this);
-    titleLabel->setStyleSheet("font-size: 26px; font-weight: 800; color: #1b5e20; margin-bottom: 10px;");
+    titleLabel->setStyleSheet("font-size: 28px; font-weight: 800; color: #f8fafc; margin-bottom: 15px; letter-spacing: 1px;");
     m_appListLayout->addWidget(titleLabel);
 
     scrollArea->setWidget(m_appListContainer);
 
-    m_stackedWidget->addWidget(new QLabel("Dashboard Content"));
-    m_stackedWidget->addWidget(scrollArea);
-    m_stackedWidget->addWidget(new QLabel("Presets Content"));
+    m_stackedWidget->addWidget(new DashboardWidget(this)); // Index 0
+    m_stackedWidget->addWidget(scrollArea);                // Index 1 (App List)
+    m_stackedWidget->addWidget(new PresetsWidget(this));   // Index 2
+    m_stackedWidget->addWidget(new SettingsWidget(this));  // Index 3
 }
 
 void MainWindow::loadActiveApps() {
-    // 1. Fetch the user's active profile from SettingsManager
     models::Profile activeProfile = persistence::SettingsManager::getInstance().getActiveProfile();
-
-    // 2. Fetch live windows from OS
     auto windows = platform::WindowEnumerator::EnumerateActiveWindows();
     std::vector<QString> seenExecutables;
 
     for (const auto& win : windows) {
-        // Skip windows that don't belong to a clear executable
         if (win.executableName.empty()) continue;
 
-        // Convert raw paths (C:\Program Files\Google\Chrome\Application\chrome.exe) 
-        // into just the filename ("chrome.exe")
         QString fullPath = QString::fromStdWString(win.executableName);
         QString exeName = QFileInfo(fullPath).fileName();
         QString appTitle = QString::fromStdWString(win.title);
 
-        // Deduplicate: Don't show 5 list items for 5 Chrome tabs
         if (std::find(seenExecutables.begin(), seenExecutables.end(), exeName) != seenExecutables.end()) {
             continue;
         }
         seenExecutables.push_back(exeName);
 
-        // 3. Check if this app is already saved in our rules
         bool isProtected = false;
         for (const auto& rule : activeProfile.rules) {
             if (rule.matchType == models::MatchType::ProcessName && rule.matchPattern == exeName) {
@@ -125,10 +126,20 @@ void MainWindow::loadActiveApps() {
             }
         }
 
-        // 4. Create the UI item with the correct initial state
-        AppListItem* item = new AppListItem(appTitle, exeName, isProtected, this);
-        item->setStyleSheet("AppListItem { background-color: white; border: 1px solid #e0e0e0; border-radius: 10px; } "
-            "AppListItem:hover { border: 1px solid #81c784; }"); // Hover effect!
+        // We now pass `fullPath` so AppListItem can grab the real Windows Icon
+        AppListItem* item = new AppListItem(appTitle, fullPath, exeName, isProtected, this);
+
+        item->setStyleSheet(R"(
+            AppListItem { 
+                background-color: rgba(30, 41, 59, 0.6); 
+                border: 1px solid #1e293b; 
+                border-radius: 12px; 
+            } 
+            AppListItem:hover { 
+                background-color: rgba(30, 41, 59, 0.9);
+                border: 1px solid #38bdf8; 
+            }
+        )");
 
         // 5. Wire the toggle switch to save data instantly
         connect(item, &AppListItem::privacyToggled, this, [](const QString& toggledExe, bool isEnabled) {
