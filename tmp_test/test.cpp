@@ -1,0 +1,1 @@
+﻿#include <QCoreApplication>\n#include <QFileInfo>\n#include <QDebug>\n#include <QStandardPaths>\n#include <QDir>\nint main(int argc, char **argv) {\n QCoreApplication app(argc, argv);\n qDebug() << "Apps:" << QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);\n return 0;\n}

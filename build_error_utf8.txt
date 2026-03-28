@@ -1,0 +1,47 @@
+﻿[  0%] Built target InjectionPayload_autogen_timestamp_deps
+[  3%] Built target InjectionPayload_autogen
+[ 19%] Built target InjectionPayload
+[ 19%] Built target PrivacyOverlay_autogen_timestamp_deps
+[ 23%] Built target PrivacyOverlay_autogen
+[ 26%] Linking CXX executable PrivacyOverlay.exe
+cmake : C:/msys64/ucrt6
+4/bin/../lib/gcc/x86_64
+-w64-mingw32/15.2.0/../
+../../../x86_64-w64-min
+gw32/bin/ld.exe: 
+cannot open output 
+file 
+PrivacyOverlay.exe: 
+Permission denied
+At line:1 char:1
++ cmake --build build 
+2>&1 | Out-File 
+-Encoding UTF8 
+build_error_utf8.t ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (C:/msys64/ucr   
+ t6...rmission deni    
+ed:String) [], Rem    
+oteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+collect2.exe: error: 
+ld returned 1 exit 
+status
+mingw32-make[2]: *** [C
+MakeFiles\PrivacyOverla
+y.dir\build.make:400: 
+PrivacyOverlay.exe] 
+Error 1
+mingw32-make[1]: *** [C
+MakeFiles\Makefile2:128
+: CMakeFiles/PrivacyOve
+rlay.dir/all] Error 2
+mingw32-make: *** 
+[Makefile:90: all] 
+Error 2

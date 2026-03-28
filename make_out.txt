@@ -1,0 +1,17 @@
+[  0%] Built target InjectionPayload_autogen_timestamp_deps
+[  3%] Built target InjectionPayload_autogen
+[ 19%] Built target InjectionPayload
+[ 19%] Built target PrivacyOverlay_autogen_timestamp_deps
+[ 23%] Built target PrivacyOverlay_autogen
+[ 26%] Building CXX object CMakeFiles/PrivacyOverlay.dir/ui/MainWindow.cpp.obj
+D:\ScreenPrivacyApp\PrivacyOverlay\ui\MainWindow.cpp: In constructor 'MainWindow::MainWindow(QWidget*)':
+D:\ScreenPrivacyApp\PrivacyOverlay\ui\MainWindow.cpp:78:5: error: 'm_appDiscoveryEngine' was not declared in this scope
+   78 |     m_appDiscoveryEngine = new platform::AppDiscoveryEngine(this);
+      |     ^~~~~~~~~~~~~~~~~~~~
+D:\ScreenPrivacyApp\PrivacyOverlay\ui\MainWindow.cpp: In member function 'void MainWindow::loadInstalledApps()':
+D:\ScreenPrivacyApp\PrivacyOverlay\ui\MainWindow.cpp:236:56: error: 'persistence::AppCacheManager' has not been declared
+  236 |     QList<models::CachedApp> cachedApps = persistence::AppCacheManager::getInstance().loadCache();
+      |                                                        ^~~~~~~~~~~~~~~
+mingw32-make[2]: *** [CMakeFiles\PrivacyOverlay.dir\build.make:280: CMakeFiles/PrivacyOverlay.dir/ui/MainWindow.cpp.obj] Error 1
+mingw32-make[1]: *** [CMakeFiles\Makefile2:128: CMakeFiles/PrivacyOverlay.dir/all] Error 2
+mingw32-make: *** [Makefile:90: all] Error 2
