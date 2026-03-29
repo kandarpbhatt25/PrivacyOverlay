@@ -14,8 +14,8 @@
 #include <QHBoxLayout>
 #include <QScrollArea>
 #include <QDebug>
-#include <QFileInfo> // Used to extract "chrome.exe" from full file paths
-#include <QSettings> // Used to read Windows Registry
+#include <QFileInfo> 
+#include <QSettings> 
 #include <algorithm>
 
 static MainWindow* g_mainWindowInstance = nullptr;
@@ -30,16 +30,21 @@ void CALLBACK WinEventProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("PrivacyOverlay");
     resize(950, 650);
-    // Deep bluish-dark background for the whole app
-    setStyleSheet("QMainWindow { background-color: #0b101e; }");
 
-    // Initialize our Mask Engine
+    // --- ADDED: Premium Subtle Gradient Background ---
+    setStyleSheet(R"(
+        QMainWindow { 
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                                        stop:0 #111827, stop:1 #060b14); 
+        }
+    )");
+    // --------------------------------------------------
+
     m_maskEngine = new core::MaskEngine(this);
 
-    // Setup Auto-Protection Monitor
     m_monitorTimer = new QTimer(this);
     connect(m_monitorTimer, &QTimer::timeout, this, &MainWindow::onMonitorTick);
-    m_monitorTimer->start(2000); // Check every 2 seconds
+    m_monitorTimer->start(2000);
 
     QWidget* centralWidget = new QWidget(this);
     QHBoxLayout* mainLayout = new QHBoxLayout(centralWidget);
@@ -51,39 +56,33 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     setupSidebar();
 
-    // Setup pages strictly in Sidebar index order
-    m_stackedWidget->addWidget(new DashboardWidget(this)); // Index 0
-    setupAppListScreen();                                  // Index 1 (Active Apps)
-    setupInstalledAppsScreen();                            // Index 2 (Installed Apps)
-    m_stackedWidget->addWidget(new PresetsWidget(this));   // Index 3
-    m_stackedWidget->addWidget(new SettingsWidget(this));  // Index 4
+    m_stackedWidget->addWidget(new DashboardWidget(this));
+    setupAppListScreen();
+    setupInstalledAppsScreen();
+    m_stackedWidget->addWidget(new PresetsWidget(this));
+    m_stackedWidget->addWidget(new SettingsWidget(this));
 
     mainLayout->addWidget(m_sidebar);
     mainLayout->addWidget(m_stackedWidget);
 
     setCentralWidget(centralWidget);
     connect(m_sidebar, &QListWidget::currentRowChanged, m_stackedWidget, &QStackedWidget::setCurrentIndex);
-    
-    // UI Glitch Fix: Now that pages exist, highlighting row 1 switches to Active Apps right at startup!
+
     m_sidebar->setCurrentRow(1);
 
-    // Initialize backend data into UI
     refreshActiveAppsUI();
     loadInstalledApps();
 
-    // 1. Register global window creation hook for ZERO DELAY shielding
     g_mainWindowInstance = this;
     m_hWinEventHook = SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_SHOW, NULL, WinEventProc, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
-    // 2. Spin up the Background App Discovery Engine
     m_appDiscoveryEngine = new platform::AppDiscoveryEngine(this);
     connect(m_appDiscoveryEngine, &platform::AppDiscoveryEngine::newAppsFound, this, &MainWindow::onAppsDiscovered);
     m_appDiscoveryEngine->startDiscovery();
 
-    // 3. Spin up the Active Process Monitor (Runtime Heuristics)
     m_processMonitor = new platform::ActiveProcessMonitor(this);
     connect(m_processMonitor, &platform::ActiveProcessMonitor::newInferredAppsDiscovered, this, &MainWindow::onInferredAppsDiscovered);
-    m_processMonitor->startMonitoring(30000); // Poll every 30 seconds
+    m_processMonitor->startMonitoring(30000);
 }
 
 MainWindow::~MainWindow() {
@@ -99,48 +98,58 @@ void MainWindow::setupSidebar() {
     m_sidebar->addItem("Installed Apps");
     m_sidebar->addItem("Presets");
     m_sidebar->addItem("Settings");
-    // Removed setCurrentRow(1) from here to fix race condition
 
-    // Responsive UI fix: Prevent sidebar from getting too wide
     m_sidebar->setMaximumWidth(220);
 
+    // --- UPDATED: Premium Pill-style Sidebar ---
     m_sidebar->setStyleSheet(R"(
         QListWidget {
-            background-color: rgba(16, 24, 43, 0.85); /* Slightly translucent dark blue */
-            border-right: 1px solid #1e293b;
+            background-color: transparent; /* Lets the gradient peek through */
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
             outline: none;
-            padding-top: 20px;
+            padding: 20px 10px; /* Pushes items slightly inward from the edges */
         }
         QListWidget::item {
-            color: #94a3b8; /* Slate gray text */
-            font-weight: bold;
+            color: #94a3b8; 
+            font-weight: 600;
             font-size: 14px;
-            padding: 15px 20px;
-            border-bottom: 1px solid transparent;
+            padding: 12px 15px;
+            margin-bottom: 5px; /* Spacing creates the individual pill look */
+            border-radius: 8px; /* Rounded pill corners */
         }
         QListWidget::item:hover {
-            background-color: rgba(30, 41, 59, 0.5);
+            background-color: rgba(255, 255, 255, 0.05);
+            color: #f8fafc;
         }
         QListWidget::item:selected {
-            color: #38bdf8; /* Neon Sky Blue */
-            background-color: rgba(56, 189, 248, 0.1); /* Glowing glass effect */
-            border-left: 4px solid #38bdf8;
+            color: #ffffff; 
+            background-color: #0284c7; /* Solid accent blue */
         }
     )");
+    // -------------------------------------------
 }
 
 void MainWindow::setupAppListScreen() {
     QScrollArea* scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
-    scrollArea->setStyleSheet("QScrollArea { border: none; background-color: transparent; }");
+
+
+    scrollArea->setStyleSheet(R"(
+        QScrollArea { border: none; background-color: transparent; }
+        QScrollBar:vertical { border: none; background: transparent; width: 8px; margin: 0px 0px 0px 0px; }
+        QScrollBar::handle:vertical { background: rgba(255, 255, 255, 0.2); min-height: 30px; border-radius: 4px; }
+        QScrollBar::handle:vertical:hover { background: rgba(255, 255, 255, 0.4); }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+    )");
 
     m_appListContainer = new QWidget(this);
     m_appListContainer->setStyleSheet("background-color: transparent;");
 
     m_appListLayout = new QVBoxLayout(m_appListContainer);
     m_appListLayout->setAlignment(Qt::AlignTop);
-    m_appListLayout->setContentsMargins(30, 30, 30, 30); // Breathing room
-    m_appListLayout->setSpacing(10); // Space between items
+    m_appListLayout->setContentsMargins(30, 30, 30, 30);
+    // Increased spacing slightly so the new shadows don't overlap the item below them
+    m_appListLayout->setSpacing(12);
 
     QLabel* titleLabel = new QLabel("Active Applications", this);
     titleLabel->setStyleSheet("font-size: 28px; font-weight: 800; color: #f8fafc; margin-bottom: 15px; letter-spacing: 1px;");
@@ -153,7 +162,14 @@ void MainWindow::setupAppListScreen() {
 void MainWindow::setupInstalledAppsScreen() {
     QScrollArea* scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
-    scrollArea->setStyleSheet("QScrollArea { border: none; background-color: transparent; }");
+
+    scrollArea->setStyleSheet(R"(
+        QScrollArea { border: none; background-color: transparent; }
+        QScrollBar:vertical { border: none; background: transparent; width: 8px; margin: 0px 0px 0px 0px; }
+        QScrollBar::handle:vertical { background: rgba(255, 255, 255, 0.2); min-height: 30px; border-radius: 4px; }
+        QScrollBar::handle:vertical:hover { background: rgba(255, 255, 255, 0.4); }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+    )");
 
     m_installedAppListContainer = new QWidget(this);
     m_installedAppListContainer->setStyleSheet("background-color: transparent;");
@@ -161,7 +177,7 @@ void MainWindow::setupInstalledAppsScreen() {
     m_installedAppListLayout = new QVBoxLayout(m_installedAppListContainer);
     m_installedAppListLayout->setAlignment(Qt::AlignTop);
     m_installedAppListLayout->setContentsMargins(30, 30, 30, 30);
-    m_installedAppListLayout->setSpacing(10);
+    m_installedAppListLayout->setSpacing(12);
 
     QLabel* titleLabel = new QLabel("Installed Applications", this);
     titleLabel->setStyleSheet("font-size: 28px; font-weight: 800; color: #f8fafc; margin-bottom: 15px; letter-spacing: 1px;");
@@ -174,9 +190,9 @@ void MainWindow::setupInstalledAppsScreen() {
 void MainWindow::refreshActiveAppsUI() {
     models::Profile activeProfile = persistence::SettingsManager::getInstance().getActiveProfile();
     auto windows = platform::WindowEnumerator::EnumerateActiveWindows();
-    
+
     QSet<QString> currentActiveExes;
-    QMap<QString, std::pair<QString, QString>> exeDetails; 
+    QMap<QString, std::pair<QString, QString>> exeDetails;
 
     for (const auto& win : windows) {
         if (win.executableName.empty()) continue;
@@ -190,20 +206,18 @@ void MainWindow::refreshActiveAppsUI() {
         }
     }
 
-    // 1. DYNAMIC UI DIFFERENCE ALGORITHM: Remove apps that exited
     QList<QString> toRemove;
     for (auto it = m_activeAppWidgets.begin(); it != m_activeAppWidgets.end(); ++it) {
         if (!currentActiveExes.contains(it.key())) {
             toRemove.append(it.key());
             m_appListLayout->removeWidget(it.value());
-            it.value()->deleteLater(); // Securely delete Qt widget memory
+            it.value()->deleteLater();
         }
     }
     for (const QString& key : toRemove) {
         m_activeAppWidgets.remove(key);
     }
 
-    // 2. DYNAMIC UI DIFFERENCE ALGORITHM: Add newly discovered apps
     for (const QString& exeName : currentActiveExes) {
         if (!m_activeAppWidgets.contains(exeName)) {
             bool isProtected = false;
@@ -218,19 +232,8 @@ void MainWindow::refreshActiveAppsUI() {
             QString fullPath = exeDetails[exeName].second;
 
             AppListItem* item = new AppListItem(appTitle, fullPath, exeName, isProtected, this);
-            item->setStyleSheet(R"(
-                AppListItem { 
-                    background-color: rgba(30, 41, 59, 0.6); 
-                    border: 1px solid #1e293b; 
-                    border-radius: 12px; 
-                } 
-                AppListItem:hover { 
-                    background-color: rgba(30, 41, 59, 0.9);
-                    border: 1px solid #38bdf8; 
-                }
-            )");
-
             connect(item, &AppListItem::privacyToggled, this, &MainWindow::onAppToggled);
+
             m_appListLayout->addWidget(item);
             m_activeAppWidgets[exeName] = item;
         }
@@ -251,11 +254,6 @@ void MainWindow::loadInstalledApps() {
         }
 
         AppListItem* item = new AppListItem(app.displayName, app.displayIcon, app.executableName, isProtected, this);
-        item->setStyleSheet(R"(
-            AppListItem { background-color: rgba(30, 41, 59, 0.6); border: 1px solid #1e293b; border-radius: 12px; } 
-            AppListItem:hover { background-color: rgba(30, 41, 59, 0.9); border: 1px solid #38bdf8; }
-        )");
-
         connect(item, &AppListItem::privacyToggled, this, &MainWindow::onAppToggled);
         m_installedAppListLayout->addWidget(item);
     }
@@ -266,7 +264,7 @@ void MainWindow::onAppsDiscovered(QList<models::CachedApp> newApps) {
     qDebug() << "[AppDiscovery] Found" << newApps.size() << "new applications in background. Populating UI...";
 
     models::Profile activeProfile = persistence::SettingsManager::getInstance().getActiveProfile();
-    
+
     for (const auto& app : newApps) {
         bool isProtected = false;
         for (const auto& rule : activeProfile.rules) {
@@ -275,11 +273,8 @@ void MainWindow::onAppsDiscovered(QList<models::CachedApp> newApps) {
                 break;
             }
         }
+
         AppListItem* item = new AppListItem(app.displayName, app.displayIcon, app.executableName, isProtected, this);
-        item->setStyleSheet(R"(
-            AppListItem { background-color: rgba(30, 41, 59, 0.6); border: 1px solid #1e293b; border-radius: 12px; } 
-            AppListItem:hover { background-color: rgba(30, 41, 59, 0.9); border: 1px solid #38bdf8; }
-        )");
         connect(item, &AppListItem::privacyToggled, this, &MainWindow::onAppToggled);
         m_installedAppListLayout->addWidget(item);
     }
@@ -288,18 +283,15 @@ void MainWindow::onAppsDiscovered(QList<models::CachedApp> newApps) {
 void MainWindow::onInferredAppsDiscovered(QList<models::CachedApp> inferredApps) {
     if (inferredApps.isEmpty()) return;
     qDebug() << "[ProcessMonitor] Inferred" << inferredApps.size() << "new applications at runtime!";
-    
+
     QList<models::CachedApp> currentCache = persistence::AppCacheManager::getInstance().loadCache();
     currentCache.append(inferredApps);
-    
-    // Maintain alphabetization in cache
+
     std::sort(currentCache.begin(), currentCache.end(), [](const models::CachedApp& a, const models::CachedApp& b) {
         return a.displayName.compare(b.displayName, Qt::CaseInsensitive) < 0;
-    });
-    
+        });
+
     persistence::AppCacheManager::getInstance().saveCache(currentCache);
-    
-    // Append to UI
     onAppsDiscovered(inferredApps);
 }
 
@@ -310,7 +302,7 @@ void MainWindow::onAppToggled(const QString& toggledExe, bool isEnabled) {
         models::AppRule newRule;
         newRule.matchType = models::MatchType::ProcessName;
         newRule.matchPattern = toggledExe;
-        newRule.maskMode = models::MaskMode::BlackMask; 
+        newRule.maskMode = models::MaskMode::BlackMask;
         profile.rules.append(newRule);
         qDebug() << "[Backend] Added rule for:" << toggledExe;
 
@@ -334,7 +326,8 @@ void MainWindow::onAppToggled(const QString& toggledExe, bool isEnabled) {
                     CloseHandle(hEvent);
                     qDebug() << "[Backend] Signaled DLL to un-hide PID:" << pid;
                 }
-            } else {
+            }
+            else {
                 qDebug() << "[Backend] Dynamic Shielding PID:" << pid;
                 this->m_maskEngine->applyShieldToProcess(pid);
                 this->m_shieldedPIDs.insert(pid);
@@ -345,7 +338,7 @@ void MainWindow::onAppToggled(const QString& toggledExe, bool isEnabled) {
         profile.rules.erase(std::remove_if(profile.rules.begin(), profile.rules.end(),
             [&](const models::AppRule& r) { return r.matchPattern == toggledExe; }), profile.rules.end());
         qDebug() << "[Backend] Removed rule for:" << toggledExe;
-        
+
         auto activeWindows = platform::WindowEnumerator::EnumerateActiveWindows();
         for (const auto& w : activeWindows) {
             QString windowExe = QFileInfo(QString::fromStdWString(w.executableName)).fileName();
@@ -367,7 +360,6 @@ void MainWindow::onAppToggled(const QString& toggledExe, bool isEnabled) {
 }
 
 void MainWindow::onMonitorTick() {
-    // 1. Cleanup Dead PIDs to prevent PID recycling issues
     QList<DWORD> deadPids;
     for (DWORD pid : m_shieldedPIDs) {
         HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
@@ -377,13 +369,13 @@ void MainWindow::onMonitorTick() {
                 deadPids.append(pid);
             }
             CloseHandle(hProcess);
-        } else {
-            deadPids.append(pid); // Process access denied or no longer exists
+        }
+        else {
+            deadPids.append(pid);
         }
     }
     for (DWORD pid : deadPids) m_shieldedPIDs.remove(pid);
 
-    // Update real-time UI without lagging user interactions
     refreshActiveAppsUI();
 }
 
