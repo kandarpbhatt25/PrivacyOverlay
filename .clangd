@@ -1,0 +1,4 @@
+CompileFlags:
+  Add: [
+    "--query-driver=C:/msys64/ucrt64/bin/*"
+  ]

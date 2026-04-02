@@ -26,20 +26,21 @@ private slots:
     void onAppToggled(const QString& toggledExe, bool isEnabled);
     void onAppsDiscovered(QList<models::CachedApp> newApps);
     void onInferredAppsDiscovered(QList<models::CachedApp> inferredApps);
+    void onProfileActivated();
 
 private:
     void setupSidebar();
-    void setupAppListScreen();
-    void setupInstalledAppsScreen();
+    void setupApplicationsScreen();
     void refreshActiveAppsUI();
     void loadInstalledApps();
 
     QListWidget* m_sidebar;
     QStackedWidget* m_stackedWidget;
-    QWidget* m_appListContainer;
-    QVBoxLayout* m_appListLayout;
-    QWidget* m_installedAppListContainer;
-    QVBoxLayout* m_installedAppListLayout;
+    
+    // Unified Apps Screen
+    QWidget* m_appsContainer;
+    QVBoxLayout* m_activeAppsLayout;
+    QVBoxLayout* m_installedAppsLayout;
     core::MaskEngine* m_maskEngine;
     
     QTimer* m_monitorTimer;

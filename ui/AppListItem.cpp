@@ -1,8 +1,13 @@
 #include "AppListItem.h"
 #include <QVBoxLayout>
+#include <windows.h>
+#include <shellapi.h>
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QIcon>
+#include <QPainter>
+#include <QDir>
+#include <QCoreApplication>
 #include <QPainter>
 #include <QPainterPath>
 
@@ -84,17 +89,58 @@ AppListItem::AppListItem(const QString& windowTitle, const QString& fullExePath,
     m_iconLabel->setFixedSize(36, 36);
     m_iconLabel->setAlignment(Qt::AlignCenter);
 
-    QFileInfo fileInfo(fullExePath);
-    QFileIconProvider iconProvider;
-    QIcon icon = iconProvider.icon(fileInfo);
+    QPixmap iconPixmap;
+    bool iconLoaded = false;
 
-    if (icon.isNull()) {
-        m_iconLabel->setStyleSheet("background-color: rgba(255, 255, 255, 0.05); border-radius: 8px;");
-    }
-    else {
-        m_iconLabel->setPixmap(icon.pixmap(32, 32));
+    // 1. Check local custom icons directory
+    QDir appDir(QCoreApplication::applicationDirPath());
+    QString customIconPath = appDir.absoluteFilePath("icons/" + QString(exeName).replace(".exe", ".png", Qt::CaseInsensitive));
+    if (QFile::exists(customIconPath)) {
+        iconPixmap = QPixmap(customIconPath).scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        if (!iconPixmap.isNull()) iconLoaded = true;
     }
 
+    // 2. Query OS for icon
+    if (!iconLoaded) {
+        bool hasCustomIcon = true;
+        if (fullExePath.endsWith(".exe", Qt::CaseInsensitive)) {
+            UINT iconCount = ExtractIconExW((LPCWSTR)fullExePath.utf16(), -1, nullptr, nullptr, 0);
+            if (iconCount == 0) hasCustomIcon = false;
+        }
+
+        if (hasCustomIcon) {
+            QFileInfo fileInfo(fullExePath);
+            QFileIconProvider iconProvider;
+            QIcon icon = iconProvider.icon(fileInfo);
+            
+            if (!icon.isNull()) {
+                iconPixmap = icon.pixmap(32, 32);
+                if (!iconPixmap.isNull()) iconLoaded = true;
+            }
+        }
+    }
+
+    // 3. Fallback: Dynamic Letter-Badge
+    if (!iconLoaded) {
+        iconPixmap = QPixmap(40, 40);
+        iconPixmap.fill(Qt::transparent);
+        QPainter painter(&iconPixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setBrush(QColor("#3b82f6")); // Sleek blueish tint
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(0, 0, 40, 40);
+        
+        painter.setPen(Qt::white);
+        QFont f = painter.font();
+        f.setPixelSize(18);
+        f.setBold(true);
+        painter.setFont(f);
+        
+        QString letter = windowTitle.isEmpty() ? "?" : windowTitle.left(1).toUpper();
+        painter.drawText(iconPixmap.rect(), Qt::AlignCenter, letter);
+    }
+
+    m_iconLabel->setPixmap(iconPixmap);
     QVBoxLayout* textLayout = new QVBoxLayout();
     textLayout->setSpacing(2);
 

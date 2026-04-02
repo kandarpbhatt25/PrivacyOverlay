@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
+
+set(CMAKE_C_COMPILER "C:/msys64/ucrt64/bin/gcc.exe")
+set(CMAKE_CXX_COMPILER "C:/msys64/ucrt64/bin/g++.exe")
+
 project(PrivacyOverlay VERSION 1.0 LANGUAGES CXX)
 
 # Set C++ standard
@@ -58,6 +62,8 @@ set(SOURCES
     ui/PresetsWidget.cpp 
     ui/SettingsWidget.h
     ui/SettingsWidget.cpp
+    ui/TrayManager.h
+    ui/TrayManager.cpp
 )
 
 # Create the executable
@@ -79,6 +85,7 @@ target_link_libraries(PrivacyOverlay PRIVATE
     advapi32
     psapi
     version
+    shell32
 )
 
 # Ensure the DLL is placed in the same directory as the EXE for MaskEngine to find it
