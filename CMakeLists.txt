@@ -5,6 +5,10 @@ project(PrivacyOverlay VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Export compile commands for IDEs (clangd, etc.) to resolve include errors
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_CXX_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
+
 # Tell CMake to automatically handle Qt's special macros (MOC)
 set(CMAKE_AUTOMOC ON)
 
