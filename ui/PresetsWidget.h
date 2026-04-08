@@ -16,6 +16,7 @@ private slots:
     void onAddProfile();
     void onDeleteProfile(const QString& id);
     void onActivateProfile(const QString& id);
+    void onEditProfile(const QString& id);
 
 private:
     void renderProfiles();

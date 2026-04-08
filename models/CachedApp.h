@@ -3,11 +3,14 @@
 #include <QJsonObject>
 
 namespace models {
+    enum class AppSource { Registry, StartMenu, LocalAppData, UWP, ActiveProcess };
+
     struct CachedApp {
         QString displayName;
         QString displayIcon;
         QString executableName;
-        bool isUWP = false;
+        QString executablePath;
+        AppSource source = AppSource::Registry;
         bool inferred = false;
 
         QJsonObject toJson() const {
@@ -15,7 +18,8 @@ namespace models {
             obj["displayName"] = displayName;
             obj["displayIcon"] = displayIcon;
             obj["executableName"] = executableName;
-            obj["isUWP"] = isUWP;
+            obj["executablePath"] = executablePath;
+            obj["source"] = static_cast<int>(source);
             obj["inferred"] = inferred;
             return obj;
         }
@@ -25,7 +29,8 @@ namespace models {
             app.displayName = obj["displayName"].toString();
             app.displayIcon = obj["displayIcon"].toString();
             app.executableName = obj["executableName"].toString();
-            app.isUWP = obj["isUWP"].toBool(false);
+            app.executablePath = obj["executablePath"].toString();
+            app.source = static_cast<AppSource>(obj["source"].toInt(static_cast<int>(AppSource::Registry)));
             app.inferred = obj["inferred"].toBool(false);
             return app;
         }

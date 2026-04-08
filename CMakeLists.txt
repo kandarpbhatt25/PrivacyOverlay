@@ -39,7 +39,6 @@ set(SOURCES
     main.cpp
     platform/WinApiWrapper.cpp
     platform/WindowEnumerator.cpp
-    platform/CaptureMonitor.cpp
     platform/AppDiscoveryEngine.cpp
     platform/Injector.cpp            
     models/AppRule.cpp
@@ -47,8 +46,8 @@ set(SOURCES
     models/CachedApp.h
     persistence/SettingsManager.cpp
     persistence/AppCacheManager.cpp
-    core/CaptureDetectionEngine.cpp
-    core/MaskEngine.cpp               
+    core/MaskEngine.cpp
+    core/IconManager.cpp               
     platform/ActiveProcessMonitor.cpp
     
     # UI Files

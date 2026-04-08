@@ -20,8 +20,12 @@ AppDiscoveryEngine::AppDiscoveryEngine(QObject* parent) : QObject(parent), worke
 
 AppDiscoveryEngine::~AppDiscoveryEngine() {
     if (workerThread) {
+        workerThread->requestInterruption();
         workerThread->quit();
-        workerThread->wait();
+        if (!workerThread->wait(1500)) {
+            workerThread->terminate();
+            workerThread->wait();
+        }
     }
 }
 
@@ -44,7 +48,19 @@ void AppDiscoveryEngine::startDiscovery() {
 void AppDiscoveryWorker::doWork() {
     QList<models::CachedApp> allApps;
     
-    // Scan all three zones in sequence
+    // 1. Proof of Life check on existing cache
+    QList<models::CachedApp> currentCache = persistence::AppCacheManager::getInstance().loadCache();
+    for (const auto& app : currentCache) {
+        if (!app.executablePath.isEmpty() && QFile::exists(app.executablePath)) {
+            allApps.append(app);
+        } else if (app.executablePath.isEmpty() && !app.displayIcon.isEmpty() && QFile::exists(app.displayIcon)) {
+            allApps.append(app);
+        } else if (app.source == models::AppSource::UWP) {
+            allApps.append(app); // Can't easily verify UWP existences with just paths sometimes, so keep them to be overridden or verified later.
+        }
+    }
+
+    // Scan all four zones in sequence
     allApps.append(scanRegistry());
     allApps.append(scanStartMenu());
     allApps.append(scanLocalAppData());
@@ -54,10 +70,21 @@ void AppDiscoveryWorker::doWork() {
     QList<models::CachedApp> uniqueApps;
     QSet<QString> seenExes;
     for (const auto& app : allApps) {
-        QString lowerExe = app.executableName.toLower();
-        if (!seenExes.contains(lowerExe)) {
-            seenExes.insert(lowerExe);
+        QString deduplicationKey = app.executableName.toLower();
+        if (!seenExes.contains(deduplicationKey)) {
+            seenExes.insert(deduplicationKey);
             uniqueApps.append(app);
+        }
+        else {
+            // Priority given to Registry or UWP over inferred apps if duplicated
+            if (app.source == models::AppSource::Registry || app.source == models::AppSource::UWP) {
+                for (int i = 0; i < uniqueApps.size(); ++i) {
+                    if (uniqueApps[i].executableName.toLower() == deduplicationKey && uniqueApps[i].inferred) {
+                        uniqueApps[i] = app;
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -67,14 +94,14 @@ void AppDiscoveryWorker::doWork() {
     });
 
     // DIFF against cache
-    QList<models::CachedApp> currentCache = persistence::AppCacheManager::getInstance().loadCache();
+    QList<models::CachedApp> oldCache = persistence::AppCacheManager::getInstance().loadCache();
     
-    bool needsUpdate = uniqueApps.size() != currentCache.size();
+    bool needsUpdate = uniqueApps.size() != oldCache.size();
     if (!needsUpdate) {
         for (int i = 0; i < uniqueApps.size(); ++i) {
-            if (uniqueApps[i].executableName != currentCache[i].executableName ||
-                uniqueApps[i].displayName != currentCache[i].displayName ||
-                uniqueApps[i].displayIcon != currentCache[i].displayIcon) {
+            if (uniqueApps[i].executableName != oldCache[i].executableName ||
+                uniqueApps[i].displayName != oldCache[i].displayName ||
+                uniqueApps[i].displayIcon != oldCache[i].displayIcon) {
                 needsUpdate = true;
                 break;
             }
@@ -156,8 +183,9 @@ QList<models::CachedApp> AppDiscoveryWorker::scanRegistry() {
             models::CachedApp app;
             app.displayName = displayName;
             app.displayIcon = !validIconPath.isEmpty() ? validIconPath : exePath;
+            app.executablePath = exePath;
             app.executableName = exeName;
-            app.isUWP = false;
+            app.source = models::AppSource::Registry;
             apps.append(app);
         }
     }
@@ -188,8 +216,9 @@ QList<models::CachedApp> AppDiscoveryWorker::scanStartMenu() {
             models::CachedApp app;
             app.displayName = lnkInfo.completeBaseName();
             app.displayIcon = lnkInfo.absoluteFilePath();
+            app.executablePath = targetPath;
             app.executableName = exeName;
-            app.isUWP = false;
+            app.source = models::AppSource::StartMenu;
             apps.append(app);
         }
     }
@@ -213,8 +242,9 @@ QList<models::CachedApp> AppDiscoveryWorker::scanLocalAppData() {
             models::CachedApp app;
             app.displayName = dirInfo.fileName(); 
             app.displayIcon = fileInfo.absoluteFilePath();
+            app.executablePath = fileInfo.absoluteFilePath();
             app.executableName = exeName;
-            app.isUWP = false;
+            app.source = models::AppSource::LocalAppData;
             apps.append(app);
             break; 
         }
@@ -227,8 +257,9 @@ QList<models::CachedApp> AppDiscoveryWorker::scanLocalAppData() {
             models::CachedApp app;
             app.displayName = "WhatsApp Classic";
             app.displayIcon = exe.absoluteFilePath();
+            app.executablePath = exe.absoluteFilePath();
             app.executableName = "WhatsApp.exe";
-            app.isUWP = false;
+            app.source = models::AppSource::LocalAppData;
             apps.append(app);
         }
     }
@@ -240,7 +271,7 @@ QList<models::CachedApp> AppDiscoveryWorker::scanUWP() {
     QList<models::CachedApp> apps;
     QProcess p;
     // We execute Powershell silently to snatch the Windows Apps list
-    p.start("powershell", QStringList() << "-NoProfile" << "-Command" << "Get-AppxPackage | Where-Object { $_.InstallLocation -ne $null } | Select-Object Name, InstallLocation | ConvertTo-Json");
+    p.start("powershell", QStringList() << "-NoProfile" << "-Command" << "Get-AppxPackage | Where-Object { $_.InstallLocation -ne $null -and $_.IsFramework -eq $False } | Select-Object Name, InstallLocation | ConvertTo-Json");
     p.waitForFinished(15000); // Allow up to 15s for large systems
 
     QByteArray output = p.readAllStandardOutput();
@@ -273,8 +304,9 @@ QList<models::CachedApp> AppDiscoveryWorker::scanUWP() {
         models::CachedApp app;
         app.displayName = name; 
         app.displayIcon = dir.filePath(bestExe);
+        app.executablePath = dir.filePath(bestExe);
         app.executableName = bestExe;
-        app.isUWP = true;
+        app.source = models::AppSource::UWP;
         apps.append(app);
     };
 

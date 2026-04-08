@@ -92,23 +92,10 @@ AppListItem::AppListItem(const QString& windowTitle, const QString& fullExePath,
     QPixmap iconPixmap;
     bool iconLoaded = false;
 
-    // 1. Check local custom icons directory
-    QDir appDir(QCoreApplication::applicationDirPath());
-    QString customIconPath = appDir.absoluteFilePath("icons/" + QString(exeName).replace(".exe", ".png", Qt::CaseInsensitive));
-    if (QFile::exists(customIconPath)) {
-        iconPixmap = QPixmap(customIconPath).scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        if (!iconPixmap.isNull()) iconLoaded = true;
-    }
-
-    // 2. Query OS for icon
-    if (!iconLoaded) {
-        bool hasCustomIcon = true;
-        if (fullExePath.endsWith(".exe", Qt::CaseInsensitive)) {
-            UINT iconCount = ExtractIconExW((LPCWSTR)fullExePath.utf16(), -1, nullptr, nullptr, 0);
-            if (iconCount == 0) hasCustomIcon = false;
-        }
-
-        if (hasCustomIcon) {
+    // 1. Query OS for Native Icon (Highest Priority)
+    if (!fullExePath.isEmpty() && fullExePath.endsWith(".exe", Qt::CaseInsensitive)) {
+        UINT iconCount = ExtractIconExW((LPCWSTR)fullExePath.utf16(), -1, nullptr, nullptr, 0);
+        if (iconCount > 0) {
             QFileInfo fileInfo(fullExePath);
             QFileIconProvider iconProvider;
             QIcon icon = iconProvider.icon(fileInfo);
@@ -120,13 +107,23 @@ AppListItem::AppListItem(const QString& windowTitle, const QString& fullExePath,
         }
     }
 
-    // 3. Fallback: Dynamic Letter-Badge
+    // 2. Check local custom icons network/theme fallback (Optional constraint compliance)
+    if (!iconLoaded) {
+        QDir appDir(QCoreApplication::applicationDirPath());
+        QString customIconPath = appDir.absoluteFilePath("icons/" + QString(exeName).replace(".exe", ".png", Qt::CaseInsensitive));
+        if (QFile::exists(customIconPath)) {
+            iconPixmap = QPixmap(customIconPath).scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            if (!iconPixmap.isNull()) iconLoaded = true;
+        }
+    }
+
+    // 3. Absolute Fallback: Dynamic Letter-Badge
     if (!iconLoaded) {
         iconPixmap = QPixmap(40, 40);
         iconPixmap.fill(Qt::transparent);
         QPainter painter(&iconPixmap);
         painter.setRenderHint(QPainter::Antialiasing);
-        painter.setBrush(QColor("#3b82f6")); // Sleek blueish tint
+        painter.setBrush(QColor("#3b82f6")); 
         painter.setPen(Qt::NoPen);
         painter.drawEllipse(0, 0, 40, 40);
         
@@ -171,4 +168,10 @@ AppListItem::AppListItem(const QString& windowTitle, const QString& fullExePath,
     connect(m_toggleSwitch, &ToggleSwitch::toggled, this, [this, exeName](bool checked) {
         emit privacyToggled(exeName, checked);
         });
+}
+
+void AppListItem::setToggleState(bool checked) {
+    if (m_toggleSwitch->isChecked() != checked) {
+        m_toggleSwitch->setChecked(checked);
+    }
 }

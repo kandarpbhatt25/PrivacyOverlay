@@ -72,8 +72,9 @@ bool ActiveProcessMonitor::extractMetadata(const QString& exePath, models::Cache
 
     appOut.displayName = productName.trimmed();
     appOut.displayIcon = exePath; // Use the exe for the icon provider
+    appOut.executablePath = exePath;
     appOut.executableName = QFileInfo(exePath).fileName();
-    appOut.isUWP = false;
+    appOut.source = models::AppSource::ActiveProcess;
     appOut.inferred = true;
 
     return true;

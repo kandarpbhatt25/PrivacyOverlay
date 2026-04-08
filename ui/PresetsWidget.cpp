@@ -8,6 +8,12 @@
 #include <QInputDialog>
 #include <QUuid>
 #include <QMessageBox>
+#include <QDialog>
+#include <QScrollArea>
+#include <QCheckBox>
+#include <QLineEdit>
+#include "persistence/AppCacheManager.h"
+#include "core/IconManager.h"
 
 PresetsWidget::PresetsWidget(QWidget* parent) : QWidget(parent) {
     m_mainLayout = new QVBoxLayout(this);
@@ -76,6 +82,12 @@ void PresetsWidget::renderProfiles() {
             activeLabel->setAlignment(Qt::AlignCenter);
             btnLayout->addWidget(activeLabel);
         }
+        
+        QPushButton* editBtn = new QPushButton("Edit", card);
+        editBtn->setStyleSheet("QPushButton { background-color: #64748b; color: white; border: none; border-radius: 6px; padding: 6px; font-weight: bold; max-width: 50px; } QPushButton:hover { background-color: #475569; }");
+        editBtn->setCursor(Qt::PointingHandCursor);
+        connect(editBtn, &QPushButton::clicked, this, [this, id = profile.id]() { onEditProfile(id); });
+        btnLayout->addWidget(editBtn);
 
         if (profile.id != "default" && !profile.isActive) {
             QPushButton* deleteBtn = new QPushButton("Del", card);
@@ -102,17 +114,15 @@ void PresetsWidget::renderProfiles() {
 }
 
 void PresetsWidget::onAddProfile() {
-    bool ok;
-    QString text = QInputDialog::getText(this, "New Preset", "Enter Preset Name:", QLineEdit::Normal, "", &ok);
-    if (ok && !text.isEmpty()) {
-        models::Profile newProfile;
-        newProfile.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        newProfile.name = text;
-        newProfile.isActive = false;
-        
-        persistence::SettingsManager::getInstance().saveProfile(newProfile);
-        renderProfiles();
-    }
+    models::Profile newProfile;
+    newProfile.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    newProfile.name = "New Profile";
+    newProfile.isActive = false;
+    
+    // Save it temporarily so the editor can grab it
+    persistence::SettingsManager::getInstance().saveProfile(newProfile);
+    
+    onEditProfile(newProfile.id);
 }
 
 void PresetsWidget::onDeleteProfile(const QString& id) {
@@ -129,4 +139,184 @@ void PresetsWidget::onActivateProfile(const QString& id) {
     persistence::SettingsManager::getInstance().setActiveProfile(id);
     renderProfiles();
     emit profileActivated();
+}
+
+void PresetsWidget::onEditProfile(const QString& id) {
+    auto profiles = persistence::SettingsManager::getInstance().loadAllProfiles();
+    models::Profile* targetProfile = nullptr;
+    for (auto& p : profiles) {
+        if (p.id == id) {
+            targetProfile = &p;
+            break;
+        }
+    }
+    if (!targetProfile) return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("Edit Profile: " + targetProfile->name);
+    dialog.resize(500, 600);
+    dialog.setStyleSheet("QDialog { background-color: #111827; } QLabel { color: #f8fafc; }");
+
+    QVBoxLayout* dLayout = new QVBoxLayout(&dialog);
+    
+    QLabel* renameLabel = new QLabel("Profile Name:", &dialog);
+    renameLabel->setStyleSheet("font-weight: bold; color: #94a3b8;");
+    dLayout->addWidget(renameLabel);
+    
+    QLineEdit* nameEdit = new QLineEdit(&dialog);
+    nameEdit->setText(targetProfile->name);
+    nameEdit->setStyleSheet("QLineEdit { background-color: rgba(30, 41, 59, 1); border: 1px solid #38bdf8; border-radius: 6px; padding: 8px; color: white; font-weight: bold; font-size: 16px; margin-bottom: 10px; }");
+    dLayout->addWidget(nameEdit);
+
+    QHBoxLayout* searchLayout = new QHBoxLayout();
+    QLineEdit* modalSearchField = new QLineEdit(&dialog);
+    modalSearchField->setPlaceholderText("Search to filter apps...");
+    modalSearchField->setStyleSheet("QLineEdit { background-color: rgba(30, 41, 59, 1); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 6px; color: white; margin-bottom: 5px; }");
+    searchLayout->addWidget(modalSearchField);
+
+    QCheckBox* showSelectedOnly = new QCheckBox("Show Selected Only", &dialog);
+    showSelectedOnly->setStyleSheet("color: #94a3b8; font-weight: bold;");
+    showSelectedOnly->setCursor(Qt::PointingHandCursor);
+    searchLayout->addWidget(showSelectedOnly);
+    dLayout->addLayout(searchLayout);
+
+    QHBoxLayout* bulkLayout = new QHBoxLayout();
+    bulkLayout->setContentsMargins(0, 0, 0, 10);
+    QPushButton* btnSelectAll = new QPushButton("Select All", &dialog);
+    btnSelectAll->setCursor(Qt::PointingHandCursor);
+    btnSelectAll->setStyleSheet("color: #38bdf8; background: transparent; border: none; font-weight: bold; text-align: left; max-width: 80px;");
+    
+    QPushButton* btnDeselectAll = new QPushButton("Deselect All", &dialog);
+    btnDeselectAll->setCursor(Qt::PointingHandCursor);
+    btnDeselectAll->setStyleSheet("color: #ef4444; background: transparent; border: none; font-weight: bold; text-align: left; max-width: 80px;");
+    
+    bulkLayout->addWidget(btnSelectAll);
+    bulkLayout->addWidget(btnDeselectAll);
+    bulkLayout->addStretch();
+    dLayout->addLayout(bulkLayout);
+
+    QLabel* title = new QLabel("Select applications to shield:", &dialog);
+    title->setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #94a3b8;");
+    dLayout->addWidget(title);
+
+    QScrollArea* scrollArea = new QScrollArea(&dialog);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setStyleSheet("QScrollArea { border: 1px solid #1e293b; background: transparent; border-radius: 8px; } QWidget#scrollContent { background: transparent; }");
+
+    QWidget* scrollContent = new QWidget(scrollArea);
+    scrollContent->setObjectName("scrollContent");
+    QVBoxLayout* listLayout = new QVBoxLayout(scrollContent);
+
+    auto cachedApps = persistence::AppCacheManager::getInstance().loadCache();
+    QList<QCheckBox*> checkboxes;
+
+    for (const auto& app : cachedApps) {
+        QWidget* rowWidget = new QWidget(scrollContent);
+        rowWidget->setStyleSheet("border-bottom: 1px solid rgba(255,255,255,0.05);");
+        QHBoxLayout* rowL = new QHBoxLayout(rowWidget);
+        rowL->setContentsMargins(5, 5, 5, 5);
+        
+        QLabel* iconL = new QLabel(rowWidget);
+        iconL->setFixedSize(24, 24);
+        iconL->setPixmap(core::IconManager::getInstance().getIcon(app.executablePath, app.displayName).scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        
+        QCheckBox* cb = new QCheckBox(app.displayName, rowWidget);
+        cb->setProperty("exeName", app.executableName);
+        cb->setStyleSheet("QCheckBox { color: #f8fafc; font-size: 14px; font-weight: bold; border: none;} QCheckBox::indicator { width: 18px; height: 18px; }");
+        
+        bool isAlreadyProtected = false;
+        for (const auto& rule : targetProfile->rules) {
+            if (rule.matchType == models::MatchType::ProcessName && rule.matchPattern == app.executableName) {
+                isAlreadyProtected = true;
+                break;
+            }
+        }
+        cb->setChecked(isAlreadyProtected);
+        
+        rowL->addWidget(iconL);
+        rowL->addWidget(cb);
+        rowL->addStretch();
+        
+        listLayout->addWidget(rowWidget);
+        checkboxes.append(cb);
+    }
+    
+    listLayout->addStretch();
+    scrollArea->setWidget(scrollContent);
+    dLayout->addWidget(scrollArea);
+
+    QHBoxLayout* btnLayout = new QHBoxLayout();
+    btnLayout->addStretch();
+    QPushButton* cancelBtn = new QPushButton("Cancel", &dialog);
+    cancelBtn->setStyleSheet("background-color: #475569; color: white; border: none; padding: 8px 16px; border-radius: 6px;");
+    QPushButton* saveBtn = new QPushButton("Save Changes", &dialog);
+    saveBtn->setStyleSheet("background-color: #0ea5e9; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold;");
+    
+    connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(saveBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+    btnLayout->addWidget(cancelBtn);
+    btnLayout->addWidget(saveBtn);
+    dLayout->addLayout(btnLayout);
+
+    auto applyModalFilter = [=]() {
+        QString query = modalSearchField->text().trimmed().toLower();
+        bool filterChecked = showSelectedOnly->isChecked();
+        
+        for (QCheckBox* cb : checkboxes) {
+            bool show = true;
+            if (filterChecked && !cb->isChecked()) show = false;
+            if (show && !query.isEmpty() && !cb->text().toLower().contains(query) && !cb->property("exeName").toString().toLower().contains(query)) {
+                show = false;
+            }
+            cb->parentWidget()->setVisible(show);
+        }
+    };
+
+    connect(modalSearchField, &QLineEdit::textChanged, &dialog, applyModalFilter);
+    connect(showSelectedOnly, &QCheckBox::toggled, &dialog, applyModalFilter);
+    connect(btnSelectAll, &QPushButton::clicked, &dialog, [=]() {
+        for (QCheckBox* cb : checkboxes) {
+            if (cb->parentWidget()->isVisible()) cb->setChecked(true);
+        }
+    });
+    connect(btnDeselectAll, &QPushButton::clicked, &dialog, [=]() {
+        for (QCheckBox* cb : checkboxes) {
+            if (cb->parentWidget()->isVisible()) cb->setChecked(false);
+        }
+    });
+
+    // Make manual checkbox toggles invoke filter evaluation immediately if "Show Selected" is active
+    for (QCheckBox* cb : checkboxes) {
+        connect(cb, &QCheckBox::toggled, &dialog, [=]() {
+            if (showSelectedOnly->isChecked()) applyModalFilter();
+        });
+    }
+
+    if (dialog.exec() == QDialog::Accepted) {
+        targetProfile->name = nameEdit->text().trimmed();
+        if (targetProfile->name.isEmpty()) targetProfile->name = "Unnamed Profile";
+        
+        targetProfile->rules.clear();
+        for (QCheckBox* cb : checkboxes) {
+            if (cb->isChecked()) {
+                models::AppRule rule;
+                rule.matchType = models::MatchType::ProcessName;
+                rule.matchPattern = cb->property("exeName").toString();
+                rule.maskMode = models::MaskMode::BlackMask;
+                targetProfile->rules.append(rule);
+            }
+        }
+        persistence::SettingsManager::getInstance().saveProfile(*targetProfile);
+        renderProfiles();
+        
+        // If they edited the active profile, trigger the update map!
+        if (targetProfile->isActive) {
+            emit profileActivated();
+        }
+    } else {
+        // Did they cancel a New Profile? If it has 0 rules and "New Profile", maybe delete it?
+        // Let's just leave it, or they can click Delete manually. But we should render anyway to show default name.
+        renderProfiles();
+    }
 }
