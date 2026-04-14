@@ -70,7 +70,7 @@ set(SOURCES
 )
 
 # Create the executable
-add_executable(PrivacyOverlay ${SOURCES})
+add_executable(PrivacyOverlay WIN32 ${SOURCES})
 
 target_include_directories(PrivacyOverlay PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QMessageBox>
+#include <QSettings>
 
 SettingsWidget::SettingsWidget(QWidget* parent) : QWidget(parent) {
     QVBoxLayout* layout = new QVBoxLayout(this);
@@ -34,7 +35,8 @@ SettingsWidget::SettingsWidget(QWidget* parent) : QWidget(parent) {
     layout->addWidget(elevatedStartupCb);
     layout->addWidget(stealthCb);
     layout->addWidget(defaultProtectCb);
-    layout->addStretch();
+    QSettings settings("PrivacyOverlay", "App");
+    elevatedStartupCb->setChecked(settings.value("ElevatedStartup", false).toBool());
 
     connect(startupCb, &QCheckBox::toggled, [](bool checked) { 
         qDebug() << "[Settings] Standard Startup set to:" << checked; 
@@ -43,6 +45,7 @@ SettingsWidget::SettingsWidget(QWidget* parent) : QWidget(parent) {
     // Schedule Task Hookup
     connect(elevatedStartupCb, &QCheckBox::toggled, [this, elevatedStartupCb](bool checked) { 
         QString exePath = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+        QSettings settings("PrivacyOverlay", "App");
         
         if (checked) {
             QString command = QString("schtasks /create /f /tn \"PrivacyOverlay_Elevated\" /tr \"\\\"%1\\\"\" /sc onlogon /rl highest").arg(exePath);
@@ -52,12 +55,15 @@ SettingsWidget::SettingsWidget(QWidget* parent) : QWidget(parent) {
                 elevatedStartupCb->blockSignals(true);
                 elevatedStartupCb->setChecked(false);
                 elevatedStartupCb->blockSignals(false);
+                settings.setValue("ElevatedStartup", false);
             } else {
-                QMessageBox::information(this, "Task Created", "Success! PrivacyOverlay will now start automatically with Administrator privileges on logon, bypassing the UAC prompt.");
+                QMessageBox::information(this, "Task Created", "Success! PrivacyOverlay will now start automatically with Administrator privileges on logon, bypassing the UAC prompt. If you launch the app directly, it will also remember to elevate itself!");
+                settings.setValue("ElevatedStartup", true);
             }
         } else {
             QString command = "schtasks /delete /f /tn \"PrivacyOverlay_Elevated\"";
             system(command.toStdString().c_str());
+            settings.setValue("ElevatedStartup", false);
         }
     });
 }
