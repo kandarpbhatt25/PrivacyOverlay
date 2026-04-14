@@ -57,6 +57,10 @@ set(SOURCES
     ui/DashboardWidget.cpp
     ui/AppListItem.h
     ui/AppListItem.cpp 
+    ui/ToastWidget.h
+    ui/ToastWidget.cpp
+    ui/NotificationCenterWidget.h
+    ui/NotificationCenterWidget.cpp
     ui/PresetsWidget.h
     ui/PresetsWidget.cpp 
     ui/SettingsWidget.h

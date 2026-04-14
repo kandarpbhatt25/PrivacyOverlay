@@ -11,6 +11,9 @@
 #include "../models/AppRule.h"
 #include "../core/MaskEngine.h"
 #include "../core/IconManager.h"
+#include "TrayManager.h"
+#include "ToastWidget.h"
+#include "NotificationCenterWidget.h"
 
 #include <QHBoxLayout>
 #include <QScrollArea>
@@ -18,6 +21,8 @@
 #include <QDebug>
 #include <QFileInfo> 
 #include <QSettings> 
+#include <QComboBox>
+#include <QButtonGroup>
 #include <algorithm>
 
 static MainWindow* g_mainWindowInstance = nullptr;
@@ -53,6 +58,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     m_sidebar = new QListWidget(this);
     m_stackedWidget = new QStackedWidget(this);
+    
+    // Initialize standalone utilities
+    m_trayManager = new TrayManager(this);
+    m_toastWidget = new ToastWidget(this);
 
     setupSidebar();
 
@@ -72,10 +81,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     
     m_stackedWidget->addWidget(new SettingsWidget(this)); // Index 3
 
+    m_notificationWidget = new NotificationCenterWidget(this);
+    m_stackedWidget->addWidget(m_notificationWidget);     // Index 4
+
     mainLayout->addWidget(m_sidebar, 0);
     mainLayout->addWidget(m_stackedWidget, 1);
 
     setCentralWidget(centralWidget);
+    
+    // Wire MaskEngine signals
+    connect(m_maskEngine, &core::MaskEngine::maskError, this, &MainWindow::onMaskError);
+    connect(m_maskEngine, &core::MaskEngine::maskApplied, this, &MainWindow::onMaskApplied);
+
     connect(m_sidebar, &QListWidget::currentRowChanged, m_stackedWidget, &QStackedWidget::setCurrentIndex);
 
     g_mainWindowInstance = this;
@@ -105,6 +122,7 @@ void MainWindow::setupSidebar() {
     m_sidebar->addItem("Applications");
     m_sidebar->addItem("Presets");
     m_sidebar->addItem("Settings");
+    m_sidebar->addItem("Notifications");
 
     m_sidebar->setFixedWidth(220);
     m_sidebar->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -138,6 +156,7 @@ void MainWindow::setupSidebar() {
 void MainWindow::setupApplicationsScreen() {
     QScrollArea* scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scrollArea->setStyleSheet("QScrollArea { border: none; background-color: transparent; }");
 
     m_appsContainer = new QWidget(this);
@@ -187,17 +206,41 @@ void MainWindow::setupApplicationsScreen() {
         return btn;
     };
 
-    m_btnFilterInstalled = createCapsule("All Installed", true);
+    m_btnFilterAll = createCapsule("All Apps", true);
+    m_btnFilterInstalled = createCapsule("Installed Apps", false);
     m_btnFilterActive = createCapsule("Active Processes", false);
-    m_btnFilterHidden = createCapsule("Privacy Enabled", false);
-    
+    m_btnFilterHidden = createCapsule("Hidden Apps", false);
+
+    QButtonGroup* filterGroup = new QButtonGroup(this);
+    filterGroup->setExclusive(true);
+    filterGroup->addButton(m_btnFilterAll);
+    filterGroup->addButton(m_btnFilterInstalled);
+    filterGroup->addButton(m_btnFilterActive);
+    filterGroup->addButton(m_btnFilterHidden);
+
+    m_sortComboBox = new QComboBox(this);
+    m_sortComboBox->setStyleSheet(R"(
+        QComboBox { background-color: rgba(30, 41, 59, 0.6); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 6px 16px; font-weight: bold; }
+        QComboBox:focus { border: 1px solid #38bdf8; }
+        QComboBox::drop-down { border: none; }
+    )");
+    m_sortComboBox->addItem("Name (A-Z)", 0);
+    m_sortComboBox->addItem("Name (Z-A)", 1);
+    m_sortComboBox->addItem("Privacy Status (Masked First)", 2);
+    m_sortComboBox->addItem("Privacy Status (Unmasked First)", 3);
+    connect(m_sortComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) { onSortChanged(index); });
+
     m_searchBox = new QLineEdit(this);
     m_searchBox->setPlaceholderText("Search apps or executables...");
     m_searchBox->setStyleSheet("QLineEdit { background-color: rgba(30, 41, 59, 0.6); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 6px 16px; } QLineEdit:focus { border: 1px solid #38bdf8; }");
-    m_searchBox->setFixedWidth(250);
+    m_searchBox->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+    m_searchBox->setMinimumWidth(120);
     connect(m_searchBox, &QLineEdit::textChanged, this, &MainWindow::onFilterChanged);
 
     filterLayout->addWidget(m_searchBox);
+    filterLayout->addWidget(m_sortComboBox);
+    filterLayout->addSpacing(10);
+    filterLayout->addWidget(m_btnFilterAll);
     filterLayout->addWidget(m_btnFilterInstalled);
     filterLayout->addWidget(m_btnFilterActive);
     filterLayout->addWidget(m_btnFilterHidden);
@@ -241,9 +284,9 @@ void MainWindow::setupApplicationsScreen() {
     activeSectionLayout->setContentsMargins(0, 10, 0, 10);
     activeSectionLayout->setSpacing(10);
     
-    QLabel* activeSubTitle = new QLabel("Active Applications", m_activeSectionWidget);
-    activeSubTitle->setStyleSheet("font-size: 20px; font-weight: bold; color: #cbd5e1; margin-bottom: 5px;");
-    activeSectionLayout->addWidget(activeSubTitle);
+    m_activeSubTitle = new QLabel("Active Applications", m_activeSectionWidget);
+    m_activeSubTitle->setStyleSheet("font-size: 20px; font-weight: bold; color: #cbd5e1; margin-bottom: 5px;");
+    activeSectionLayout->addWidget(m_activeSubTitle);
     
     m_activeAppsLayout = new QVBoxLayout(); 
     m_activeAppsLayout->setSpacing(10);
@@ -251,11 +294,11 @@ void MainWindow::setupApplicationsScreen() {
     mainLayout->addWidget(m_activeSectionWidget);
 
     // --- Divider ---
-    QFrame* divider = new QFrame(this);
-    divider->setFrameShape(QFrame::HLine);
-    divider->setFrameShadow(QFrame::Sunken);
-    divider->setStyleSheet("background-color: #1e293b; height: 1px; margin-top: 5px; margin-bottom: 5px;");
-    mainLayout->addWidget(divider);
+    m_divider = new QFrame(this);
+    m_divider->setFrameShape(QFrame::HLine);
+    m_divider->setFrameShadow(QFrame::Sunken);
+    m_divider->setStyleSheet("background-color: #1e293b; height: 1px; margin-top: 5px; margin-bottom: 5px;");
+    mainLayout->addWidget(m_divider);
 
     // --- Installed Apps Section ---
     m_installedSectionWidget = new QWidget(this);
@@ -264,9 +307,9 @@ void MainWindow::setupApplicationsScreen() {
     installedSectionLayout->setContentsMargins(0, 10, 0, 10);
     installedSectionLayout->setSpacing(10);
     
-    QLabel* installedSubTitle = new QLabel("Installed Applications", m_installedSectionWidget);
-    installedSubTitle->setStyleSheet("font-size: 20px; font-weight: bold; color: #cbd5e1; margin-bottom: 5px;");
-    installedSectionLayout->addWidget(installedSubTitle);
+    m_installedSubTitle = new QLabel("Installed Applications", m_installedSectionWidget);
+    m_installedSubTitle->setStyleSheet("font-size: 20px; font-weight: bold; color: #cbd5e1; margin-bottom: 5px;");
+    installedSectionLayout->addWidget(m_installedSubTitle);
     
     m_installedAppsLayout = new QVBoxLayout(); 
     m_installedAppsLayout->setSpacing(10);
@@ -368,7 +411,6 @@ void MainWindow::refreshUnifiedAppsUI() {
             AppListItem* item = new AppListItem(state.displayName, "", state.exeName, state.isHidden, this);
             connect(item, &AppListItem::privacyToggled, this, &MainWindow::onAppToggled);
             
-            // Assign to appropriate visual layout depending on current run state
             if (state.isActive) {
                 m_activeAppsLayout->addWidget(item);
             } else {
@@ -376,7 +418,6 @@ void MainWindow::refreshUnifiedAppsUI() {
             }
             m_unifiedAppWidgets[state.exeName] = item;
         } else {
-            // Because active state can toggle dynamically, move the widget if it changed
             AppListItem* item = m_unifiedAppWidgets[state.exeName];
             bool isInActiveLayout = m_activeAppsLayout->indexOf(item) != -1;
             
@@ -389,13 +430,63 @@ void MainWindow::refreshUnifiedAppsUI() {
             }
         }
     }
+    applySorting();
     onFilterChanged();
 }
 
+void MainWindow::onSortChanged(int /*index*/) {
+    applySorting();
+}
+
+void MainWindow::applySorting() {
+    int sortMode = m_sortComboBox ? m_sortComboBox->currentData().toInt() : 0;
+    
+    auto sortLayout = [this, sortMode](QVBoxLayout* layout) {
+        if (!layout) return;
+        QList<AppListItem*> items;
+        for (int i = 0; i < layout->count(); ++i) {
+            QWidget* widget = layout->itemAt(i)->widget();
+            if (AppListItem* appItem = qobject_cast<AppListItem*>(widget)) {
+                items.append(appItem);
+            }
+        }
+        
+        std::sort(items.begin(), items.end(), [this, sortMode](AppListItem* a, AppListItem* b) {
+            QString exeA = a->getExeName();
+            QString exeB = b->getExeName();
+            models::AppState stateA = m_globalAppState.value(exeA);
+            models::AppState stateB = m_globalAppState.value(exeB);
+            
+            if (sortMode == 0) { // A-Z
+                return stateA.displayName.compare(stateB.displayName, Qt::CaseInsensitive) < 0;
+            } else if (sortMode == 1) { // Z-A
+                return stateA.displayName.compare(stateB.displayName, Qt::CaseInsensitive) > 0;
+            } else if (sortMode == 2) { // Masked First
+                if (stateA.isHidden != stateB.isHidden) return stateA.isHidden;
+                return stateA.displayName.compare(stateB.displayName, Qt::CaseInsensitive) < 0;
+            } else if (sortMode == 3) { // Unmasked First
+                if (stateA.isHidden != stateB.isHidden) return !stateA.isHidden;
+                return stateA.displayName.compare(stateB.displayName, Qt::CaseInsensitive) < 0;
+            }
+            return false;
+        });
+        
+        for (AppListItem* item : items) {
+            layout->removeWidget(item);
+        }
+        for (AppListItem* item : items) {
+            layout->addWidget(item);
+        }
+    };
+    if (m_activeAppsLayout) sortLayout(m_activeAppsLayout);
+    if (m_installedAppsLayout) sortLayout(m_installedAppsLayout);
+}
+
 void MainWindow::onFilterChanged() {
-    m_filterShowInstalled = m_btnFilterInstalled->isChecked();
-    m_filterShowActive = m_btnFilterActive->isChecked();
-    m_filterShowHidden = m_btnFilterHidden->isChecked();
+    bool filterShowAll = m_btnFilterAll ? m_btnFilterAll->isChecked() : true;
+    m_filterShowInstalled = m_btnFilterInstalled ? m_btnFilterInstalled->isChecked() : false;
+    m_filterShowActive = m_btnFilterActive ? m_btnFilterActive->isChecked() : false;
+    m_filterShowHidden = m_btnFilterHidden ? m_btnFilterHidden->isChecked() : false;
 
     int visibleActive = 0;
     int visibleInstalled = 0;
@@ -407,13 +498,14 @@ void MainWindow::onFilterChanged() {
 
         bool show = false;
         
-        // Multi-Select OR (Union) filter logic
-        if (m_filterShowInstalled) show = true; 
-        if (m_filterShowActive && state.isActive) show = true;
-        if (m_filterShowHidden && state.isHidden) show = true;
-        
-        if (!m_filterShowInstalled && !m_filterShowActive && !m_filterShowHidden) {
-            show = true; // Prevents blanking out the view entirely if all are un-checked
+        if (filterShowAll) {
+            show = true;
+        } else if (m_filterShowInstalled && !state.isActive) {
+            show = true;
+        } else if (m_filterShowActive && state.isActive) {
+            show = true;
+        } else if (m_filterShowHidden && state.isHidden) {
+            show = true;
         }
         
         // Strict Search Filter (AND operation over visibility status)
@@ -425,16 +517,28 @@ void MainWindow::onFilterChanged() {
         }
         
         widget->setVisible(show);
-
+        
         if (show) {
             if (state.isActive) visibleActive++;
             else visibleInstalled++;
         }
     }
 
-    // Hide entire visual sections if they are empty
-    m_activeSectionWidget->setVisible(visibleActive > 0);
-    m_installedSectionWidget->setVisible(visibleInstalled > 0);
+    bool hasActive = visibleActive > 0;
+    bool hasInstalled = visibleInstalled > 0;
+
+    if (m_activeSectionWidget) m_activeSectionWidget->setVisible(hasActive);
+    if (m_installedSectionWidget) m_installedSectionWidget->setVisible(hasInstalled);
+
+    if (filterShowAll) {
+        if (m_activeSubTitle) m_activeSubTitle->setVisible(true);
+        if (m_installedSubTitle) m_installedSubTitle->setVisible(true);
+        if (m_divider) m_divider->setVisible(hasActive && hasInstalled);
+    } else {
+        if (m_activeSubTitle) m_activeSubTitle->setVisible(false);
+        if (m_installedSubTitle) m_installedSubTitle->setVisible(false);
+        if (m_divider) m_divider->setVisible(false);
+    }
 }
 
 void MainWindow::onAppsDiscovered(QList<models::CachedApp> newApps) {
@@ -479,6 +583,7 @@ void MainWindow::onAppToggled(const QString& toggledExe, bool isEnabled) {
                 }
             }
         }
+        bool allSucceeded = true;
         for (DWORD pid : pidsToMask) {
             if (this->m_shieldedPIDs.contains(pid)) {
                 wchar_t eventName[256];
@@ -486,9 +591,30 @@ void MainWindow::onAppToggled(const QString& toggledExe, bool isEnabled) {
                 HANDLE hEvent = OpenEventW(EVENT_MODIFY_STATE, FALSE, eventName);
                 if (hEvent) { SetEvent(hEvent); CloseHandle(hEvent); }
             } else {
-                this->m_maskEngine->applyShieldToProcess(pid);
-                this->m_shieldedPIDs.insert(pid);
+                if (this->m_maskEngine->applyShieldToProcess(pid)) {
+                    this->m_shieldedPIDs.insert(pid);
+                } else {
+                    allSucceeded = false;
+                }
             }
+        }
+        
+        if (!allSucceeded) {
+            // Revert state if we failed to shield successfully
+            if (!m_isBlackoutActive) {
+                profile.rules.erase(std::remove_if(profile.rules.begin(), profile.rules.end(),
+                    [&](const models::AppRule& r) { return r.matchPattern == toggledExe; }), profile.rules.end());
+            } else {
+                m_emergencySnapshot.remove(toggledExe);
+            }
+            
+            AppListItem* widget = m_unifiedAppWidgets.value(toggledExe);
+            if (widget) {
+                widget->blockSignals(true);
+                widget->setToggleState(false);
+                widget->blockSignals(false);
+            }
+            isEnabled = false; // Prevents saving the invalid rule
         }
     } else {
         if (!m_isBlackoutActive) {
@@ -552,8 +678,9 @@ void MainWindow::handleNewWindow(HWND hwnd) {
     }
 
     if (requiresShield) {
-        m_maskEngine->applyShieldToProcess(pid);
-        m_shieldedPIDs.insert(pid);
+        if (m_maskEngine->applyShieldToProcess(pid)) {
+            m_shieldedPIDs.insert(pid);
+        }
     }
     
     updateGlobalState(); // Immediate view update for Dashboard
@@ -590,8 +717,9 @@ void MainWindow::onProfileActivated() {
 
     for (DWORD pid : newPidsToMask) {
         if (!m_shieldedPIDs.contains(pid)) {
-             m_maskEngine->applyShieldToProcess(pid);
-             m_shieldedPIDs.insert(pid);
+             if (m_maskEngine->applyShieldToProcess(pid)) {
+                 m_shieldedPIDs.insert(pid);
+             }
         } else {
              wchar_t eventName[256];
              swprintf_s(eventName, L"PrivacyShield_Enable_PID_%lu", pid);
@@ -643,5 +771,35 @@ void MainWindow::onEmergencyBlackout(bool isBlackout) {
             if (widget) widget->setToggleState(false);
         }
         m_emergencySnapshot.clear();
+    }
+}
+
+void MainWindow::onMaskError(DWORD pid, const QString& message) {
+    QString errTitle = "Privacy Engine Error";
+    QString errMsg = message;
+    
+    // Find matching app name if possible
+    for (auto it = m_globalAppState.begin(); it != m_globalAppState.end(); ++it) {
+        if (it.value().isActive) {
+            // Because we don't store PID in globalAppState directly, we'd guess but for now just show error.
+            // Ideally we'd look it up.
+        }
+    }
+    
+    m_toastWidget->showToast(errTitle, errMsg, true);
+    m_notificationWidget->addNotification(errTitle, errMsg + QString(" (PID: %1)").arg(pid), true);
+}
+
+void MainWindow::onMaskApplied(DWORD pid) {
+    // Optionally log successful applies if we want deep logging, but not necessary for standard notifications.
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (m_isMinimizeToTrayEnabled) {
+        event->ignore();
+        hide();
+        m_toastWidget->showToast("Privacy Overlay Minimized", "Application is still protecting your privacy in the background.", false);
+    } else {
+        event->accept();
     }
 }

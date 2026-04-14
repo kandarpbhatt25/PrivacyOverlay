@@ -17,8 +17,8 @@ std::string MaskEngine::getPayloadPath() const {
     return m_payloadPath;
 }
 
-void MaskEngine::applyShieldToProcess(DWORD pid) {
-    if (pid == 0) return;
+bool MaskEngine::applyShieldToProcess(DWORD pid) {
+    if (pid == 0) return false;
 
     qDebug() << "[MaskEngine] Attempting to shield PID:" << pid;
 
@@ -26,9 +26,11 @@ void MaskEngine::applyShieldToProcess(DWORD pid) {
     if (platform::Injector::InjectDLL(pid, m_payloadPath)) {
         qDebug() << "[MaskEngine] Shield successfully injected into PID:" << pid;
         emit maskApplied(pid);
+        return true;
     } else {
         qDebug() << "[MaskEngine] Failed to inject shield into PID:" << pid;
         emit maskError(pid, "Injection failed. Check Admin privileges.");
+        return false;
     }
 }
 

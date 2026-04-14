@@ -148,7 +148,7 @@ AppListItem::AppListItem(const QString& windowTitle, const QString& fullExePath,
     m_nameLabel->setFont(font);
     m_nameLabel->setStyleSheet("color: #f8fafc; background: transparent;");
     m_nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    m_nameLabel->setMinimumWidth(100);
+    m_nameLabel->setMinimumWidth(0);
 
     m_exeLabel = new QLabel(exeName, m_cardFrame);
     m_exeLabel->setStyleSheet("color: #94a3b8; font-size: 11px; background: transparent;");

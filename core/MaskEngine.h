@@ -21,8 +21,9 @@ public:
     /**
      * Orchestrates the injection into a specific process.
      * @param pid The Process ID to shield.
+     * @return True if injection succeeded, false otherwise.
      */
-    void applyShieldToProcess(DWORD pid);
+    bool applyShieldToProcess(DWORD pid);
 
     /**
      * Iterates through a list of HWNDs and applies the shield via the injector.

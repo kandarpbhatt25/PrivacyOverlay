@@ -32,6 +32,7 @@ class AppListItem : public QWidget {
 public:
     explicit AppListItem(const QString& windowTitle, const QString& fullExePath, const QString& exeName, bool initialState, QWidget* parent = nullptr);
     void setToggleState(bool checked);
+    QString getExeName() const { return m_exeLabel->text(); }
 
 signals:
     void privacyToggled(const QString& exeName, bool isEnabled);

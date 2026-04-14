@@ -25,13 +25,23 @@ bool Injector::SetDebugPrivilege(bool enable) {
 }
 
 bool Injector::InjectDLL(DWORD pid, const std::string& dllPath) {
+    if (pid == 0 || dllPath.empty()) return false;
+
     // 1. Elevate privileges to talk to other apps
     SetDebugPrivilege(true);
+
+    // Provide an initial graceful check. If this fails, no use trying PROCESS_ALL_ACCESS
+    HANDLE hTest = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hTest) {
+        std::cerr << "[Injector] Graceful Refusal: Cannot access PID " << pid << " due to high privileges/protection." << std::endl;
+        return false;
+    }
+    CloseHandle(hTest);
 
     // 2. Open the target process
     HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
     if (!hProcess) {
-        std::cerr << "[Injector] Failed to open process. Error: " << GetLastError() << std::endl;
+        std::cerr << "[Injector] Failed to open process for injection. Error: " << GetLastError() << std::endl;
         return false;
     }
 
@@ -50,7 +60,19 @@ bool Injector::InjectDLL(DWORD pid, const std::string& dllPath) {
     }
 
     // 5. Get the address of LoadLibraryA from kernel32.dll
-    LPVOID loadLibraryAddr = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
+    HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+    if (!hKernel32) {
+        VirtualFreeEx(hProcess, remoteBuf, 0, MEM_RELEASE);
+        CloseHandle(hProcess);
+        return false;
+    }
+    
+    LPVOID loadLibraryAddr = (LPVOID)GetProcAddress(hKernel32, "LoadLibraryA");
+    if (!loadLibraryAddr) {
+        VirtualFreeEx(hProcess, remoteBuf, 0, MEM_RELEASE);
+        CloseHandle(hProcess);
+        return false;
+    }
 
     // 6. Create a remote thread in the target process that calls LoadLibraryA(remoteBuf)
     HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)loadLibraryAddr, remoteBuf, 0, NULL);
@@ -63,7 +85,7 @@ bool Injector::InjectDLL(DWORD pid, const std::string& dllPath) {
     }
 
     // Wait for the thread to finish loading the DLL
-    WaitForSingleObject(hThread, INFINITE);
+    WaitForSingleObject(hThread, 5000); // 5 sec timeout instead of INFINITE to prevent blocking UI if it hangs
 
     // Cleanup
     CloseHandle(hThread);
