@@ -7,6 +7,8 @@
 
 #include <stdio.h> // For swprintf_s
 
+#include <vector>
+
 void ApplyMasking(bool enable) {
     DWORD targetAffinity = enable ? 0x00000011 : 0x00000000; // WDA_EXCLUDEFROMCAPTURE
     DWORD fallbackAffinity = enable ? 0x00000001 : 0x00000000; // WDA_MONITOR
@@ -14,31 +16,48 @@ void ApplyMasking(bool enable) {
 
     struct EnumData {
         DWORD pid;
-        DWORD affinity;
-        DWORD fallbackAffinity;
+        std::vector<HWND> hwnds;
     };
-    EnumData data = { currentPid, targetAffinity, fallbackAffinity };
+    EnumData data;
+    data.pid = currentPid;
 
-    // Use EnumWindows to find all top-level windows of this process
+    // Pass 1: Collect windows safely inside EnumWindows without sending synchronous messages
     EnumWindows([](HWND hwnd, LPARAM lp) -> BOOL {
         EnumData* pData = (EnumData*)lp;
         DWORD pid;
         GetWindowThreadProcessId(hwnd, &pid);
         if (pid == pData->pid) {
-            DWORD currentAffinity = 0;
-            GetWindowDisplayAffinity(hwnd, &currentAffinity);
-            
-            // Only apply if it's different to prevent spamming the DWM
-            if (currentAffinity != pData->affinity && currentAffinity != pData->fallbackAffinity) {
-                if (!SetWindowDisplayAffinity(hwnd, pData->affinity)) {
-                    if (pData->fallbackAffinity != pData->affinity) {
-                        SetWindowDisplayAffinity(hwnd, pData->fallbackAffinity);
-                    }
-                }
-            }
+            pData->hwnds.push_back(hwnd);
         }
         return TRUE;
     }, (LPARAM)&data);
+
+    // Pass 2: Apply affinity outside of the EnumWindows lock to prevent deadlocks
+    for (HWND hwnd : data.hwnds) {
+        DWORD desiredAffinity = targetAffinity;
+
+        if (!IsWindowVisible(hwnd)) {
+            desiredAffinity = 0;
+        } else {
+            wchar_t className[256];
+            if (GetClassNameW(hwnd, className, 256) > 0) {
+                if (wcscmp(className, L"Ghost") == 0) {
+                    desiredAffinity = 0;
+                }
+            }
+        }
+
+        DWORD currentAffinity = 0;
+        GetWindowDisplayAffinity(hwnd, &currentAffinity);
+        
+        if (currentAffinity != desiredAffinity) {
+            if (!SetWindowDisplayAffinity(hwnd, desiredAffinity)) {
+                if (desiredAffinity != 0 && fallbackAffinity != desiredAffinity) {
+                    SetWindowDisplayAffinity(hwnd, fallbackAffinity);
+                }
+            }
+        }
+    }
 }
 
 // Global flag to stop thread cleanly
